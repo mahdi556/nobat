@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Doctor;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,6 +21,9 @@ class OfficeResource extends JsonResource
             'work_time' => json_decode( $this->work_time) ,
             'visit_type' => json_decode( $this->visit_type) ,
             'interval' => 15,
+            'name' => $this->name,
+            'address' => $this->address,
+            'doctor'=>new DoctorResource($this->whenLoaded('doctor')) 
         ];
     }
 }

@@ -16,7 +16,13 @@ class DoctorResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'name' => $this->name
+            'name' => $this->name,
+            'avatar'=>$this->avatar,
+            'nezam'=>$this->nezam,
+            'expert'=>$this->expert,
+            'slug'=>$this->slug,
+            'site'=>$this->site,
+            'offices'=> OfficeResource::collection($this->offices)
         ];
     }
 }

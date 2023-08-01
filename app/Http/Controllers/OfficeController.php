@@ -52,7 +52,7 @@ class OfficeController extends ApiController
         
          $reserves = Reserve::all()->where('office_id', $office->id);
         return $this->successResponse([
-            'office' => new OfficeResource($office),
+            'office' => new OfficeResource($office->load('doctor')),
             'reserves' => ReserveResource::collection($reserves)
         ], 200);
     }

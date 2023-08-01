@@ -13,7 +13,10 @@ class DoctorController extends ApiController
      */
     public function index()
     {
-        //
+        $doctors=Doctor::all();
+        return $this->successResponse([
+            'doctors' => DoctorResource::collection($doctors),
+        ], 200);
     }
 
     /**
@@ -42,7 +45,9 @@ class DoctorController extends ApiController
      */
     public function show(Doctor $doctor)
     {
-        //
+        return $this->successResponse([
+            'doctor' => new DoctorResource($doctor),
+        ], 200);
     }
 
     /**
@@ -67,5 +72,13 @@ class DoctorController extends ApiController
     public function destroy(Doctor $doctor)
     {
         //
+    }
+    public function verifySite(Request $request)
+    {
+        $doctor_name=$request->query('name');
+        $doctor=Doctor::where('site',$doctor_name)->firstOrFail();
+        return $this->successResponse([
+            'doctor' => new DoctorResource($doctor),
+        ], 200);
     }
 }
