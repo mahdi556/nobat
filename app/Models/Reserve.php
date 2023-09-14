@@ -17,8 +17,16 @@ class Reserve extends Model
     }
     public function scopeDate($query, $date)
     {
-        $dateTime= Carbon::parse($date)->toDateString();
+        $dateTime = Carbon::parse($date)->toDateString();
 
-         $query->whereRaw("DATE(time) = ?", [$dateTime]);
+        $query->whereRaw("DATE(time) = ?", [$dateTime]);
+    }
+    public function office()
+    {
+        return $this->belongsTo(Office::class);
+    }
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }

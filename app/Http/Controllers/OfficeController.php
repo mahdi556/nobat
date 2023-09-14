@@ -6,6 +6,7 @@ use App\Http\Resources\OfficeResource;
 use App\Http\Resources\ReserveResource;
 use App\Models\Office;
 use App\Models\Reserve;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class OfficeController extends ApiController
@@ -47,10 +48,9 @@ class OfficeController extends ApiController
     /**
      * Display the specified resource.
      */
-    public function show(Office $office)
+    public function show(Office $office,Request $request)
     {
-        
-         $reserves = Reserve::all()->where('office_id', $office->id);
+         $reserves = Reserve::where('office_id', $office->id)->whereDate('time',$request->query('time'))->get();
         return $this->successResponse([
             'office' => new OfficeResource($office->load('doctor')),
             'reserves' => ReserveResource::collection($reserves)

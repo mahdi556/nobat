@@ -30,26 +30,28 @@ class AuthController extends ApiController
         if ($user) {
             $user->update([
                 'otp' => $OTPCode,
-                'login_token' => $loginToken
+                'login_token' => $loginToken,
+                'new' => 0
+
             ]);
         } else {
             $user = User::Create([
                 'cellphone' => $request->cellphone,
                 'otp' => $OTPCode,
-                'login_token' => $loginToken
+                'login_token' => $loginToken,
+                'new' => 1
             ]);
         }
         // $user->notify(new OTPSms($OTPCode));
 
-        return $this->successResponse(['login_token' => $loginToken], 200);
+        return $this->successResponse(['login_token' => $loginToken, 'new' => $user->new], 200);
     }
 
     public function checkOtp(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            // 'otp' => 'required|digits:3',
+            'otp' => 'required|digits:4',
             'login_token' => 'required|string',
-            'name' => 'required|string',
         ]);
 
         if ($validator->fails()) {
@@ -60,7 +62,18 @@ class AuthController extends ApiController
 
         if ($user->otp == $request->otp) {
             $token = $user->createToken('myApp', ['user'])->plainTextToken;
+            if ($user->new == 1) {
+                $validator = Validator::make($request->all(), [
+                    'name' => 'required|string',
+                    'codeMelli' => 'required|string'
+                ]);
+                $user->update([
+                    'name' => $request->name,
+                    'codemelli' => $request->codeMelli,
+                    'new' => 0
 
+                ]);
+            }
             return $this->successResponse([
                 'user' => new UserResource($user),
                 'token' => $token

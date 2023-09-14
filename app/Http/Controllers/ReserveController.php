@@ -4,9 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\ReserveResource;
 use App\Models\Reserve;
+use App\Models\Transaction;
+use App\Models\User;
+use App\Notifications\OTPSms;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Morilog\Jalali\Jalalian;
+use PHPUnit\Framework\Attributes\IgnoreFunctionForCodeCoverage;
 use SoapClient;
 
 class ReserveController extends ApiController
@@ -16,7 +23,11 @@ class ReserveController extends ApiController
      */
     public function index()
     {
-        //
+        $user = User::find(Auth::id());
+        $reserves = Reserve::where('user_id', $user->id)->get();
+        return $this->successResponse([
+            'reserves' =>  ReserveResource::collection($reserves),
+        ], 200);
     }
 
     /**
@@ -30,28 +41,34 @@ class ReserveController extends ApiController
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public static function  store($request, $token)
     {
+        DB::beginTransaction();
+
         $delay = 0;
         $diffInMinutes = Carbon::parse($request->time)->diffInMinutes(Carbon::parse($request->display_time));
-        if ($request->qty > 1) {
-            $isReserve = false;
-            for ($i = 1; $i < $request->qty; $i++) {
-                $time = Carbon::createFromFormat('Y-m-d H:i:s', $request->time)->addMinutes(($i) * 15);
-                $reserve =  Reserve::all()->where('time', $time->format('Y-m-d H:i:s'))->first();
-                if ($reserve) {
-                    $isReserve = true;
-                }
-            }
-            if ($isReserve) {
-                return $this->errorResponse(['message' => 'already reserved'], 406);
-            }
-        }
+        // if ($request->qty > 1) {
+        //     $isReserve = false;
+        //     for ($i = 1; $i < $request->qty; $i++) {
+        //         $time = Carbon::createFromFormat('Y-m-d H:i:s', $request->time)->addMinutes(($i) * 15);
+        //         $reserve =  Reserve::all()->where('time', $time->format('Y-m-d H:i:s'))->first();
+        //         if ($reserve) {
+        //             $isReserve = true;
+        //         }
+        //     }
+        //     // if ($isReserve) {
+        //     //     return $this->errorResponse(['message' => 'already reserved'], 406);
+        //     // }
+        //     if ($isReserve) {
+        //         return response()->json(['message' => 'already reserved'], 406);
+        //     }
+        // }
         if (Carbon::parse($request->time)->diffInMinutes(Carbon::parse($request->display_time)) > 0) {
             $delay = $diffInMinutes;
         }
 
         $reserve = Reserve::create([
+            'user_id' => auth()->user()->id,
             'hour' => $request->hour,
             'minute' => $request->minute,
             'time' => $request->time,
@@ -61,12 +78,16 @@ class ReserveController extends ApiController
             'status' => 'wait',
             'section' => $request->section,
             'delay' => $delay,
-            'uuid' => Str::uuid()
+            'uuid' => Str::uuid(),
+            'payment_status' => 0,
+            'payment_token' => $token,
+            'persian_date' => Jalalian::forge(Carbon::parse($request->time)->timestamp)->format('Y-m-d')
         ]);
         if ($request->qty > 1) {
             for ($i = 1; $i < $request->qty; $i++) {
                 $time = Carbon::createFromFormat('Y-m-d H:i:s', $request->time)->addMinutes(($i) * 15);
                 $reserve = Reserve::create([
+                    'user_id' => auth()->user()->id,
                     'hour' => $time->format('H'),
                     'minute' => $time->format('i'),
                     'time' => $time->format('Y-m-d H:i:s'),
@@ -76,16 +97,12 @@ class ReserveController extends ApiController
                     'related' => true,
                     'status' => 'wait',
                     'section' => $request->section,
-                    'delay' => $delay
+                    'delay' => $delay,
+                    'persian_date' => Jalalian::forge(Carbon::parse($request->time)->timestamp)->format('Y-m-d')
                 ]);
             }
         }
-        // $this->refreshLeavedReserves();
-        // $this->refreshReserves();
-
-        return $this->successResponse([
-            'reserve' => new ReserveResource($reserve),
-        ], 200);
+        DB::commit();
     }
 
 
@@ -108,21 +125,58 @@ class ReserveController extends ApiController
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Reserve $reserve)
+    public static function update($token)
     {
-        //
+        DB::beginTransaction();
+
+        $reserve = Reserve::where('payment_token', $token)->firstOrFail();
+        $reserve->update([
+            'payment_status' => 1,
+        ]);
+        DB::commit();
+    }
+    public static function checkReserve($request)
+    {
+
+        if ($request->qty > 1) {
+            $isReserve = false;
+            for ($i = 1; $i < $request->qty; $i++) {
+                $time = Carbon::createFromFormat('Y-m-d H:i:s', $request->time)->addMinutes(($i) * 15);
+                $reserve =  Reserve::all()->where('time', $time->format('Y-m-d H:i:s'))->first();
+                if ($reserve) {
+                    $isReserve = true;
+                }
+            }
+            if ($isReserve) {
+                return response()->json(['message' => 'already reserved'], 406);
+            }
+            return response()->json(['message' => 'reserve is possible'], 200);
+        }
+        return response()->json(['message' => 'reserve is possible'], 200);
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Reserve $reserve)
+    public static function destroy($token, $msg)
     {
-        //
+        DB::beginTransaction();
+        $transaction = Transaction::where('token', $token)->firstOrFail();
+        $transaction->update([
+            'status' => 0,
+            'message' => $msg
+
+        ]);
+
+        $reserve = Reserve::where('payment_token', $token)->firstOrFail();
+        $reserve->delete();
+        DB::commit();
     }
 
     public function task(Request $request)
     {
+
+        // dd($request->all());
         $this->nonreferral($request->time, $request->section);
         $reserve = Reserve::section($request->section)->date($request->time)->where('time', $request->time)->first();
         $currentTime = Carbon::now();
@@ -164,13 +218,15 @@ class ReserveController extends ApiController
         }
 
         $first_future_que = $revs->first();
-        $past_que = Reserve::section($section)->date($time)->where('related', 0)->whereIn('status', ['wait', 'done'])->whereTime('time', '<', Carbon::parse(Carbon::now()))->orderBy('time', 'desc')->first();
-        $base_time = (Carbon::parse($past_que->time))->addMinutes(($past_que->qty * 15) + $past_que->delay);
-        // dd($past_que, $base_time, $first_future_que->time);
-        if ($base_time > Carbon::parse($first_future_que->time)) {
-            $first_future_que->update(['delay' => ($base_time)->diffInMinutes(Carbon::parse($first_future_que->time))]);
-            foreach ($revs as $reserve) {
-                $reserve->update(['delay' => $first_future_que->delay]);
+        if ($first_future_que) {
+            $past_que = Reserve::section($section)->date($time)->where('related', 0)->whereIn('status', ['wait', 'done'])->whereTime('time', '<', Carbon::parse(Carbon::now()))->orderBy('time', 'desc')->first();
+            $base_time = (Carbon::parse($past_que->time))->addMinutes(($past_que->qty * 15) + $past_que->delay);
+            // dd($past_que, $base_time, $first_future_que->time);
+            if ($base_time > Carbon::parse($first_future_que->time)) {
+                $first_future_que->update(['delay' => ($base_time)->diffInMinutes(Carbon::parse($first_future_que->time))]);
+                foreach ($revs as $reserve) {
+                    $reserve->update(['delay' => $first_future_que->delay]);
+                }
             }
         }
     }
@@ -208,13 +264,23 @@ class ReserveController extends ApiController
     public function smsTracking()
     {
         $client = new SoapClient("http://ippanel.com/class/sms/wsdlservice/server.php?wsdl");
-        $user = "9133048270"; 
-        $pass = "Faraz@1292665254"; 
-        $fromNum = "+983000505"; 
-        $toNum = "array("9136281995")"; 
-        $pattern_code = "cc778sse6k"; 
-        $input_data = array( "user" => "مهشید ذوالفقاری","h" => 2,"m"=>35,"delay"=>"38 دقیقه"); 
-    
-        echo $client->sendPatternSms($fromNum,$toNum,$user,$pass,$pattern_code,$input_data);
+        $user = "9133048270";
+        $pass = "Faraz@1292665254";
+        $fromNum = "+983000505";
+        $toNum = array("9136281995");
+        $pattern_code = "cc778sse6k";
+        $input_data = array("user" => "مهشید ذوالفقاری", "h" => 2, "m" => 35, "delay" => "38 دقیقه");
+
+        echo $client->sendPatternSms($fromNum, $toNum, $user, $pass, $pattern_code, $input_data);
+    }
+
+
+    public function smstest(Request $request)
+    {
+        // dd($request->all());
+        $token = $request->token;
+        $user_id = Reserve::where('payment_token', $token)->pluck('user_id')->firstOrFail();
+        $user = User::find($user_id);
+        $user->notify(new OTPSms(1233));
     }
 }

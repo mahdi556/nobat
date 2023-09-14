@@ -38,4 +38,8 @@ class User extends Authenticatable
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
     ];
+    public function offices(){
+        return $this->hasMany(Office::class);
+    }
+
 }

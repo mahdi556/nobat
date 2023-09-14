@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Resources;
+namespace App\Http\Resources\Panel;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class UserResource extends JsonResource
+class OfficePanelResource extends JsonResource
 {
     /**
      * Transform the resource into an array.
@@ -16,9 +16,8 @@ class UserResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'cellphone' => $this->cellphone,
             'name' => $this->name,
-            'codemelli' => $this->codemelli,
+            'is_default'=>$this->is_default
         ];
     }
 }
